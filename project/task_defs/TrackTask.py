@@ -4,8 +4,8 @@ import sys
 import json
 import numpy as np
 import math
-from project.implementation.transition_defs.TimerTransition import TimerTransition
-from project.interface.Task import Task
+from ..transition_defs.TimerTransition import TimerTransition
+from interface.Task import Task
 import time
 import logging
 from gabriel_protocol import gabriel_pb2
@@ -31,7 +31,7 @@ class TrackTask(Task):
         self.target_lost_duration = 10
 
         # PID controller parameters
-        # TODO: Somehow, this needs to be portable to other drones, maybe we implement a 
+        # TODO: Somehow, this needs to be portable to other drones, maybe we implement a
         # setpoint interface? This would be easy with MAVLINK drones but harder with the
         # ANAFI series.
         self.time_prev = None
@@ -47,13 +47,13 @@ class TrackTask(Task):
             'trans_active_lock': self.trans_active_lock,
             'trigger_event_queue': self.trigger_event_queue
         }
-        
+
         # Triggered event
         if ("timeout" in self.transitions_attributes):
             timer = TimerTransition(args, self.transitions_attributes["timeout"])
             timer.daemon = True
             timer.start()
-    
+
     def targetBearing(self, origin, destination):
         lat1, lon1 = origin
         lat2, lon2 = destination
@@ -79,7 +79,7 @@ class TrackTask(Task):
 
         t = (plane_norm.dot(plane_pt) - plane_norm.dot(target_insct)) / plane_norm.dot(target_dir)
         return target_insct + (t * target_dir)
-    
+
     async def estimateDistance(self, yaw, pitch):
         alt = await self.drone.getRelAlt()
         gimbal = await self.drone.getGimbalPitch()
@@ -88,7 +88,7 @@ class TrackTask(Task):
         r = R.from_euler('ZYX', [yaw, 0, pitch + gimbal], degrees=True)
         target_dir = r.as_matrix().dot(vf)
         target_vec = self.findIntersection(target_dir, np.array([0, 0, alt]))
-        
+
         logger.info(f"[TrackTask]: Distance estimation: {np.linalg.norm(target_vec)}")
         leash_vec = self.leash_length * (target_vec / np.linalg.norm(target_vec))
         logger.info(f"[TrackTask]: Error vector length: {np.linalg.norm(leash_vec - target_vec)}")
@@ -100,11 +100,11 @@ class TrackTask(Task):
         target_yaw_angle = ((target_x_pix - self.pixel_center[0]) / self.pixel_center[0]) * (self.HFOV / 2)
         target_pitch_angle = ((target_y_pix - self.pixel_center[1]) / self.pixel_center[1]) * (self.VFOV / 2)
         target_bottom_pitch_angle = (((self.image_res[1] - box[2]) - self.pixel_center[1]) / self.pixel_center[1]) * (self.VFOV / 2)
-        
+
         yaw_error = -1 * target_yaw_angle
         gimbal_error = target_pitch_angle
         move_error = await self.estimateDistance(target_yaw_angle, target_bottom_pitch_angle)
-        
+
         return (yaw_error, gimbal_error, move_error[1] * -1)
 
     def clamp(self, value, minimum, maximum):
@@ -167,13 +167,12 @@ class TrackTask(Task):
         g = await self.drone.getGimbalPitch()
         await self.drone.setGimbalPose(0.0, g + float(vels[1]), 0.0)
 
-    @Task.call_after_exit
     async def run(self):
         logger.info("[TrackTask]: Starting tracking task")
 
         self.cloudlet.switchModel(self.task_attributes["model"])
         self.cloudlet.setHSVFilter(lower_bound=self.task_attributes["lower_bound"], upper_bound=self.task_attributes["upper_bound"])
-        
+
         # TODO: Parameterize this
         # self.leash_length = float(self.task_attributes["leash"])
         self.leash_length = 15.0
@@ -203,9 +202,9 @@ class TrackTask(Task):
                             if det["class"] == target and det["hsv_filter"]:
                                 box = det["box"]
                                 last_seen = time.time()
-                                break 
+                                break
 
-                        # Found an instance of target, start tracking!
+                                # Found an instance of target, start tracking!
                         if box is not None:
                             logger.info(f"[TrackTask]: Detected instance of {target}, tracking...")
                             vels = await self.pid(box)
@@ -215,6 +214,6 @@ class TrackTask(Task):
                     except Exception as e:
                         exc_type, exc_obj, exc_tb = sys.exc_info()
                         logger.error(f"[TrackTask]: Exception encountered, {e}, line no {exc_tb.tb_lineno}")
-            
+
             await asyncio.sleep(0.03)
-       
+        self._exit()

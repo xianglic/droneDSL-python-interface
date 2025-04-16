@@ -1,12 +1,9 @@
 
-from project.implementation.transition_defs.ObjectDetectionTransition import ObjectDetectionTransition
-from project.implementation.transition_defs.TimerTransition import TimerTransition
-from project.implementation.transition_defs.HSVDetectionTransition import HSVDetectionTransition
-from project.interface.Task import Task
+from ..transition_defs.TimerTransition import TimerTransition
+from interface.Task import Task
 import asyncio
 import ast
 import logging
-from gabriel_protocol import gabriel_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +47,14 @@ class TestTask(Task):
         #     {"lat": 34.0522, "lng": -118.2437, "alt": 50, "bear": 0},  # Los Angeles
         #     {"lat": 40.7128, "lng": -74.0060, "alt": 100, "bear": 0}   # New York
         # ]
+        while True:
+            
+            avoid_res = await self.cloudlet.getResults('obstacle-avoidance')
+            detect_res = await self.cloudlet.getResults('openscout-object')
+            
+            logger.info(f"**************Test Task 2{self.task_id}: Avoidance Result: {avoid_res}**************\n")
+            logger.info(f"**************Test Task 2{self.task_id}: Detection Result: {detect_res}**************\n")
+        
         coords = ast.literal_eval(self.task_attributes["coords"])
 
         logger.info(f"**************Test Task 2{self.task_id}: hi this is Test task2 {self.task_id}**************\n")
