@@ -38,34 +38,33 @@ class TestTask(Task):
     @Task.call_after_exit
     async def run(self):
         
-        # self.create_transition()
+        self.create_transition()
         
-        logger.info(f"**************Test Task 2{self.task_id}: hi this is Test task2 {self.task_id}**************\n")
-    
-        # coords = [
-        #     {"lat": 37.7749, "lng": -122.4194, "alt": 30, "bear": 0},  # San Francisco
-        #     {"lat": 34.0522, "lng": -118.2437, "alt": 50, "bear": 0},  # Los Angeles
-        #     {"lat": 40.7128, "lng": -74.0060, "alt": 100, "bear": 0}   # New York
-        # ]
-        while True:
-            
-            avoid_res = await self.cloudlet.getResults('obstacle-avoidance')
-            detect_res = await self.cloudlet.getResults('openscout-object')
-            
-            logger.info(f"**************Test Task 2{self.task_id}: Avoidance Result: {avoid_res}**************\n")
-            logger.info(f"**************Test Task 2{self.task_id}: Detection Result: {detect_res}**************\n")
-        
+        logger.info(f"**************Test Task {self.task_id}: hi this is Test task {self.task_id}**************\n")
+
+
+        # test for computestub
+        # while True:
+        #
+        #     tel_res = await self.cloudlet.getTelemetry()
+        #     # avoid_res = await self.cloudlet.getResults('obstacle-avoidance')
+        #     # detect_res = await self.cloudlet.getResults('openscout-object')
+        #
+        #     logger.info(f"**************Test Task {self.task_id}: Telemetry Result: {tel_res}**************\n")
+        #     # logger.info(f"**************Test Task {self.task_id}: Avoidance Result: {avoid_res}**************\n")
+        #     # logger.info(f"**************Test Task {self.task_id}: Detection Result: {detect_res}**************\n")
+
+        # test for dronestub
         coords = ast.literal_eval(self.task_attributes["coords"])
 
-        logger.info(f"**************Test Task 2{self.task_id}: hi this is Test task2 {self.task_id}**************\n")
+        logger.info(f"**************Test Task {self.task_id}: hi this is Test task2 {self.task_id}**************\n")
         for dest in coords:
             lng = dest["lng"]
             lat = dest["lat"]
             alt = dest["alt"]
-            # bear = dest["bear"]
             bear = 0
-            logger.info(f"**************Test Task 2{self.task_id}: setGPSLocation **************\n")
-            logger.info(f"**************Test Task 2{self.task_id}: GPSLocation: {lat}, {lng}, {alt} {bear}**************\n")
+            logger.info(f"**************Test Task {self.task_id}: setGPSLocation **************\n")
+            logger.info(f"**************Test Task {self.task_id}: GPSLocation: {lat}, {lng}, {alt} {bear}**************\n")
             await self.drone.setGPSLocation(lat, lng, alt, bear)
             await asyncio.sleep(0)
         
