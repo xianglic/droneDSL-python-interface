@@ -44,15 +44,15 @@ class TestTask(Task):
 
 
         # test for computestub
-        # while True:
-        #
-        #     tel_res = await self.cloudlet.getTelemetry()
-        #     # avoid_res = await self.cloudlet.getResults('obstacle-avoidance')
-        #     # detect_res = await self.cloudlet.getResults('openscout-object')
-        #
-        #     logger.info(f"**************Test Task {self.task_id}: Telemetry Result: {tel_res}**************\n")
-        #     # logger.info(f"**************Test Task {self.task_id}: Avoidance Result: {avoid_res}**************\n")
-        #     # logger.info(f"**************Test Task {self.task_id}: Detection Result: {detect_res}**************\n")
+        while True:
+
+            tel_res = await self.cloudlet.get_telemetry()
+            # avoid_res = await self.cloudlet.getResults('obstacle-avoidance')
+            # detect_res = await self.cloudlet.getResults('openscout-object')
+
+            logger.info(f"**************Test Task {self.task_id}: Telemetry Result: {tel_res}**************\n")
+            # logger.info(f"**************Test Task {self.task_id}: Avoidance Result: {avoid_res}**************\n")
+            # logger.info(f"**************Test Task {self.task_id}: Detection Result: {detect_res}**************\n")
 
         # test for dronestub
         coords = ast.literal_eval(self.task_attributes["coords"])
@@ -65,7 +65,7 @@ class TestTask(Task):
             bear = 0
             logger.info(f"**************Test Task {self.task_id}: setGPSLocation **************\n")
             logger.info(f"**************Test Task {self.task_id}: GPSLocation: {lat}, {lng}, {alt} {bear}**************\n")
-            await self.drone.setGPSLocation(lat, lng, alt, bear)
+            await self.drone.set_gps_location(lat, lng, alt, bear)
             await asyncio.sleep(0)
         
         
