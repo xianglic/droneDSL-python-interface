@@ -47,12 +47,12 @@ class TestTask(Task):
         while True:
 
             tel_res = await self.cloudlet.get_telemetry()
-            # avoid_res = await self.cloudlet.getResults('obstacle-avoidance')
-            # detect_res = await self.cloudlet.getResults('openscout-object')
+            avoid_res = await self.cloudlet.get_compute_result('obstacle-avoidance')
+            detect_res = await self.cloudlet.get_compute_result('openscout-object')
 
             logger.info(f"**************Test Task {self.task_id}: Telemetry Result: {tel_res}**************\n")
-            # logger.info(f"**************Test Task {self.task_id}: Avoidance Result: {avoid_res}**************\n")
-            # logger.info(f"**************Test Task {self.task_id}: Detection Result: {detect_res}**************\n")
+            logger.info(f"**************Test Task {self.task_id}: Avoidance Result: {avoid_res}**************\n")
+            logger.info(f"**************Test Task {self.task_id}: Detection Result: {detect_res}**************\n")
 
         # test for dronestub
         coords = ast.literal_eval(self.task_attributes["coords"])
