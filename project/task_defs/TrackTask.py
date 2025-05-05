@@ -14,8 +14,8 @@ logger.setLevel(logging.INFO)
 
 class TrackTask(Task):
 
-    def __init__(self, drone, compute, task_id, trigger_event_queue, task_args):
-        super().__init__(drone, compute, task_id, trigger_event_queue, task_args)
+    def __init__(self, control, data, task_id, trigger_event_queue, task_args):
+        super().__init__(control, data, task_id, trigger_event_queue, task_args)
         self.image_res = (1280, 720)
         self.pixel_center = (self.image_res[0] / 2, self.image_res[1] / 2)
         self.HFOV = 69
@@ -64,8 +64,8 @@ class TrackTask(Task):
         return target_insct + (t * target_dir)
 
     async def estimate_distance(self, yaw, pitch):
-        alt = await self.drone.getRelAlt()
-        gimbal = await self.drone.getGimbalPitch()
+        alt = await self.data.get_telemetry()["global_position"]["relative_altitude"]
+        gimbal = await self.data.get_telemetry()["gimbal_pose"]["pitch"]
 
         vf = [0, 1, 0]
         r = R.from_euler('ZYX', [yaw, 0, pitch + gimbal], degrees=True)
@@ -93,15 +93,15 @@ class TrackTask(Task):
 
     async def actuate(self, follow_vel, yaw_vel,\
             gimbal_offset, orbit_speed, descent_speed):
-        prev_gimbal = self.drone.get_telemetry()["gimbal_pose"]["pitch"]
-        await self.drone.set_velocity(follow_vel, orbit_speed, -1 * descent_speed, yaw_vel)
-        await self.drone.set_gimbal_pose(gimbal_offset + prev_gimbal)
+        prev_gimbal = self.data.get_telemetry()["gimbal_pose"]["pitch"]
+        await self.control.set_velocity_body(follow_vel, orbit_speed, -1 * descent_speed, yaw_vel)
+        await self.control.set_gimbal_pose(gimbal_offset + prev_gimbal)
     
     ''' Main Logic '''
     @Task.call_after_exit
     async def run(self):
-        self.compute.switch_model(self.task_attributes["model"])
-        self.compute.set_hsv_filter(lower_bound=self.task_attributes["lower_bound"],\
+        self.data.switch_model(self.task_attributes["model"])
+        self.data.set_hsv_filter(lower_bound=self.task_attributes["lower_bound"],\
                 upper_bound=self.task_attributes["upper_bound"])
 
         target = self.task_attributes["class"]
@@ -115,12 +115,12 @@ class TrackTask(Task):
         last_seen = None
         descended = False
         while True:
-            result = self.compute.getResults("openscout-object")
+            result = self.data.get_results("openscout-object")
             if last_seen is not None and \
                     int(time.time() - last_seen)  > self.target_lost_duration:
                 # If we have not found the target in N seconds trigger the done transition
                 break
-            if self.drone.get_telemetry()["relative_altitude"] <= altitude:
+            if self.data.get_telemetry()["relative_altitude"] <= altitude:
                 descended = True
             if result != None:
                 if result.payload_type == gabriel_pb2.TEXT:
@@ -136,7 +136,7 @@ class TrackTask(Task):
                                 last_seen = time.time()
                                 break
 
-                                # Found an instance of target, start tracking!
+                        # Found an instance of target, start tracking!
                         if box is not None:
                             follow_error, yaw_error, gimbal_error\
                                     = await self.error(box)
