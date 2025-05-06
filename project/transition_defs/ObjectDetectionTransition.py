@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 class ObjectDetectionTransition(Transition):
-    def __init__(self, args, target, cloudlet):
+    def __init__(self, args, target, data):
         super().__init__(args)
         self.stop_signal = False
         self.target =target
-        self.cloudlet = cloudlet
+        self.data = data
         
     def stop(self):
         self.stop_signal = True
@@ -22,33 +22,31 @@ class ObjectDetectionTransition(Transition):
     def run(self):
         self._register()
         time.sleep(4)
-        self.cloudlet.clearResults("openscout-object")
+        self.data.clear_compute_result("openscout-object")
         while not self.stop_signal:
             # get result
-            result = self.cloudlet.getResults("openscout-object")
+            result = self.data.get_compute_result("openscout-object")
             if (result != None):
                 logger.info(f"**************Transition:  Task {self.task_id}: detected payload! {result}**************\n")
-                # Check if the payload type is TEXT, since your JSON seems to be text data
-                if result.payload_type == gabriel_pb2.TEXT:
-                    try:
-                        # Decode the payload from bytes to string
-                        json_string = result.payload.decode('utf-8')
+                try:
+                    # Decode the payload from bytes to string
+                    json_string = result
 
-                        # Parse the JSON string
-                        json_data = json.loads(json_string)
+                    # Parse the JSON string
+                    json_data = json.loads(json_string)
 
-                        # Access the 'class' attribute
-                        class_attribute = json_data[0]['class']  # Adjust the indexing based on your JSON structure
-                        logger.info(class_attribute)
+                    # Access the 'class' attribute
+                    class_attribute = json_data[0]['class']  # Adjust the indexing based on your JSON structure
+                    logger.info(class_attribute)
 
-                        if (class_attribute== self.target):
-                                logger.info(f"**************Transition: Task {self.task_id}: detect condition met! {class_attribute}**************\n")
-                                self._trigger_event("object_detection")
-                                break
-                    except JSONDecodeError as e:
-                        logger.error(f'Error decoding json: {json_string}')
-                    except Exception as e:
-                        logger.info(e)
+                    if (class_attribute== self.target):
+                            logger.info(f"**************Transition: Task {self.task_id}: detect condition met! {class_attribute}**************\n")
+                            self._trigger_event("object_detection")
+                            break
+                except JSONDecodeError as e:
+                    logger.error(f'Error decoding json: {json_string}')
+                except Exception as e:
+                    logger.info(e)
         # print("object stopping...\n")          
         self._unregister()
   
