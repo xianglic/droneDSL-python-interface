@@ -8,6 +8,7 @@ import time
 from ..transition_defs.TimerTransition import TimerTransition
 from interface.Task import Task
 import logging
+from scipy.spatial.transform import Rotation as R
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -21,7 +22,8 @@ class TrackTask(Task):
         self.HFOV = 69
         self.VFOV = 43
         self.target_lost_duration = 10
-        
+        self.leash_length = 15.0
+
     def create_transition(self):
         args = {
             'task_id': self.task_id,
@@ -29,7 +31,7 @@ class TrackTask(Task):
             'trans_active_lock': self.trans_active_lock,
             'trigger_event_queue': self.trigger_event_queue
         }
-        
+
         if ("timeout" in self.transitions_attributes):
             timer = TimerTransition(args, self.transitions_attributes["timeout"])
             timer.daemon = True
@@ -64,16 +66,20 @@ class TrackTask(Task):
         return target_insct + (t * target_dir)
 
     async def estimate_distance(self, yaw, pitch):
-        alt = await self.data.get_telemetry()["global_position"]["relative_altitude"]
-        gimbal = await self.data.get_telemetry()["gimbal_pose"]["pitch"]
+        telemetry = await self.data.get_telemetry()
+        alt = telemetry["global_position"]["relative_altitude"]
+        gimbal = telemetry["gimbal_pose"]["pitch"]
 
         vf = [0, 1, 0]
         r = R.from_euler('ZYX', [yaw, 0, pitch + gimbal], degrees=True)
         target_dir = r.as_matrix().dot(vf)
         target_vec = self.find_intersection(target_dir, np.array([0, 0, alt]))
 
+        logger.info(f"[TrackTask]: Distance estimation: {np.linalg.norm(target_vec)}")
+        leash_vec = self.leash_length * (target_vec / np.linalg.norm(target_vec))
+        logger.info(f"[TrackTask]: Error vector length: {np.linalg.norm(leash_vec - target_vec)}")
         return leash_vec - target_vec
-    
+
     async def error(self, box):
         target_x_pix = self.image_res[0] - int(((box[3] - box[1]) / 2.0) + box[1])
         target_y_pix = self.image_res[1] - int(((box[2] - box[0]) / 2.0) + box[0])
@@ -87,67 +93,92 @@ class TrackTask(Task):
         follow_error = await self.estimate_distance(target_yaw_angle, target_bottom_pitch_angle)
 
         return (follow_error, yaw_error, gimbal_error)
-    
+
     def clamp(self, value, minimum, maximum):
-        return max(minimum, min(value, maximum))
+        return np.clip(value, minimum, maximum)
 
     async def actuate(self, follow_vel, yaw_vel,\
             gimbal_offset, orbit_speed, descent_speed):
-        prev_gimbal = self.data.get_telemetry()["gimbal_pose"]["pitch"]
+        telemetry = await self.data.get_telemetry()
+        prev_gimbal = telemetry["gimbal_pose"]["pitch"]
         await self.control.set_velocity_body(follow_vel, orbit_speed, -1 * descent_speed, yaw_vel)
-        await self.control.set_gimbal_pose(gimbal_offset + prev_gimbal)
-    
+        #await self.control.set_gimbal_pose(gimbal_offset + prev_gimbal)
+
     ''' Main Logic '''
     @Task.call_after_exit
     async def run(self):
-        self.data.switch_model(self.task_attributes["model"])
-        self.data.set_hsv_filter(lower_bound=self.task_attributes["lower_bound"],\
-                upper_bound=self.task_attributes["upper_bound"])
+        # init the data
+        model = self.task_attributes["model"]
+        lower_bound = self.task_attributes["lower_bound"]
+        upper_bound = self.task_attributes["upper_bound"]
+        await self.control.configure_compute(model, lower_bound, upper_bound)
 
         target = self.task_attributes["class"]
-        altitude = self.task_attributes["altitude"]
-        descent_speed = self.task_attributes["descent_speed"]
-        orbit_speed = self.task_attributes["orbit_speed"]
-        follow_speed = self.task_attributes["follow_speed"]
-        yaw_speed = self.task_attributes["yaw_speed"]
+        altitude = 10
+        descent_speed = 5
+        orbit_speed = 2
+        follow_speed = 2
+        yaw_speed = 1
+        gimbal_offset = 0
 
         self.create_transition()
         last_seen = None
         descended = False
         while True:
-            result = self.data.get_results("openscout-object")
+            logger.info("Awaiting compute result")
+            response = await self.data.get_compute_result("openscout-object")
+            result = response.cpt.result
+            if len(result) == 0:
+                continue
+
+            detections = result[0].generic_result
+            logger.info(f"{detections=}")
+            try:
+                detections = json.loads(detections)
+            except Exception as e:
+                logger.error(e)
+                raise
             if last_seen is not None and \
                     int(time.time() - last_seen)  > self.target_lost_duration:
                 # If we have not found the target in N seconds trigger the done transition
+                logger.info(f"Breaking; {self.target_lost_duration=} {last_seen=} {time.time()=}")
                 break
-            if self.data.get_telemetry()["relative_altitude"] <= altitude:
+            telemetry = await self.data.get_telemetry()
+            global_pos = telemetry["global_position"]
+            if global_pos["relative_altitude"] <= altitude:
                 descended = True
-            if result != None:
-                if result.payload_type == gabriel_pb2.TEXT:
-                    try:
-                        json_string = result.payload.decode('utf-8')
-                        json_data = json.loads(json_string)
-                        box = None
-                        for det in json_data:
 
-                            # Return the first instance found of the target class
-                            if det["class"] == target and det["hsv_filter"]:
-                                box = det["box"]
-                                last_seen = time.time()
-                                break
+            box = None
+            # Return the first instance found of the target class
+            for det in detections:
+                #if det["class"] == 'bench':# and det["hsv_filter"]:
+                #    box = det["box"]
+                #    last_seen = time.time()
+                #    break
+                logger.info(f"Now following {det['class']}")
+                box = det["box"]
+                last_seen = time.time()
+                break
 
-                        # Found an instance of target, start tracking!
-                        if box is not None:
-                            follow_error, yaw_error, gimbal_error\
-                                    = await self.error(box)
-                            follow_vel = self.clamp(follow_error, -1 * follow_speed, follow_speed)
-                            yaw_vel = self.clamp(yaw_error, -1 * yaw_speed, yaw_speed)
-                            if decended:
-                                await self.actuate(0.0, yaw_vel, gimbal_offset, 0.0, descent_speed)
-                            else:
-                                await self.actuate(follow_vel, yaw_vel, gimbal_offset, orbit_speed, 0.0)
-                    except Exception as e:
-                        logger.error(f"Failed to actuate, reason: {e}")
+            # Found an instance of target, start tracking!
+            if box is not None:
+                try:
+                    follow_error, yaw_error, gimbal_error = await self.error(box)
+                except Exception as e:
+                    logger.error(f"Failed to calculate error, reason: {e}")
+                try:
+                    follow_vel = self.clamp(follow_error, -1 * follow_speed, follow_speed)
+                    yaw_vel = self.clamp(yaw_error, -1 * yaw_speed, yaw_speed)
+                except Exception as e:
+                    logger.error(f"Failed to clamp, reason: {e}")
+                try:
+                    if descended:
+                        await self.actuate(0.0, yaw_vel, gimbal_offset, 0.0, descent_speed)
+                    else:
+                        await self.actuate(follow_vel, yaw_vel, gimbal_offset, orbit_speed, 0.0)
+                except Exception as e:
+                    logger.error(f"Failed to actuate, reason: {e}")
+                logger.info("Successfully actuated")
 
             await asyncio.sleep(0.05)
-        
+
