@@ -53,7 +53,7 @@ class DetectTask(Task):
     @Task.call_after_exit
     async def run(self):
         # init the data
-        logger.info("test, for pullin32")
+        logger.info("test, for pullin3")
         model = self.task_attributes["model"]
         lower_bound = self.task_attributes["lower_bound"]
         upper_bound = self.task_attributes["upper_bound"]
